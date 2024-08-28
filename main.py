@@ -34,6 +34,44 @@ class Board:
         for tile in self.tiles:
             screen.blit(tile.image, tile.rect)
 
+    def update(self):
+        # Check for match-3s
+        tile_color_dict = {}
+        for tile in self.tiles:
+            tile_color_dict[tile.unmoved_center] = tile.color
+        matches = match_3(tile_color_dict)
+        for match in matches:
+            for coord in match["coordinates"]:
+                for i, tile in enumerate(self.tiles):
+                    if tile.rect.center == coord:
+                        self.tiles.remove(tile)
+
+        # Move the tile if one is selected
+        if self.selected:
+            tile = self.selected
+            mouse = pygame.Vector2(pygame.mouse.get_pos())
+            difference = mouse - pygame.Vector2(tile.unmoved_center)
+
+            if abs(difference.x) > abs(difference.y):
+                clamped_x = max(tile.unmoved_center[0] - 29, min(tile.unmoved_center[0] + 29, mouse.x))
+                tile.rect.centerx = clamped_x
+                tile.rect.centery = tile.unmoved_center[1]
+            else:
+                clamped_y = max(tile.unmoved_center[1] - 29, min(tile.unmoved_center[1] + 29, mouse.y))
+                tile.rect.centery = clamped_y
+                tile.rect.centerx = tile.unmoved_center[0]
+
+        # Fill gaps
+        for tile in self.tiles:
+            tile.rect.move_ip(0, 30)
+
+            other_tiles = self.tiles.copy()
+            other_tiles.remove(tile)
+            if tile.rect.collideobjects(other_tiles) or tile.rect.y > 400:
+                tile.rect.move_ip(0, -30)
+            else:
+                tile.unmoved_center = tile.rect.center
+
 class Tile(pygame.sprite.Sprite):
     def __init__(self, color, size, location):
         super().__init__()
@@ -46,8 +84,8 @@ class Tile(pygame.sprite.Sprite):
         self.unmoved_center = self.rect.center
 
 
-def find_consecutive_colors(tile_color_dict):
-    consecutive_colors = set()
+def match_3(tile_color_dict):
+    consecutive_colors_info = []
 
     # Convert keys to sorted lists of x and y values
     x_coords = sorted(set(key[0] for key in tile_color_dict))
@@ -60,7 +98,10 @@ def find_consecutive_colors(tile_color_dict):
             color2 = tile_color_dict.get((x_coords[i + 1], y))
             color3 = tile_color_dict.get((x_coords[i + 2], y))
             if color1 == color2 == color3:
-                consecutive_colors.add(color1)
+                consecutive_colors_info.append({
+                    'color': color1,
+                    'coordinates': [(x_coords[i], y), (x_coords[i + 1], y), (x_coords[i + 2], y)]
+                })
 
     # Check columns for consecutive colors
     for x in x_coords:
@@ -69,9 +110,12 @@ def find_consecutive_colors(tile_color_dict):
             color2 = tile_color_dict.get((x, y_coords[j + 1]))
             color3 = tile_color_dict.get((x, y_coords[j + 2]))
             if color1 == color2 == color3:
-                consecutive_colors.add(color1)
+                consecutive_colors_info.append({
+                    'color': color1,
+                    'coordinates': [(x, y_coords[j]), (x, y_coords[j + 1]), (x, y_coords[j + 2])]
+                })
 
-    return consecutive_colors
+    return consecutive_colors_info
 
 
 board = Board()
@@ -93,37 +137,19 @@ while True:
                 for sub_tile in collides:
                     if sub_tile != tile:
                         collide_tiles.append(sub_tile)
-                collided_tile = collide_tiles[0]
+                if collide_tiles:
+                    collided_tile = collide_tiles[0]
 
-                # Swap the tiles
-                tile.unmoved_center, collided_tile.unmoved_center = collided_tile.unmoved_center, tile.unmoved_center
-                tile.rect.center = tile.unmoved_center
-                collided_tile.rect.center = collided_tile.unmoved_center
+                    # Swap the tiles
+                    tile.unmoved_center, collided_tile.unmoved_center = collided_tile.unmoved_center, tile.unmoved_center
+                    tile.rect.center = tile.unmoved_center
+                    collided_tile.rect.center = collided_tile.unmoved_center
 
+            tile.rect.center = tile.unmoved_center
             # Deselect our tile
             board.selected = None
 
-    # Check for match-3s
-    tile_color_dict = {}
-    for tile in board.tiles:
-        tile_color_dict[tile.unmoved_center] = tile.color
-    result = find_consecutive_colors(tile_color_dict)
-
-    # Move the tile if one is selected
-    if board.selected:
-        tile = board.selected
-        mouse = pygame.Vector2(pygame.mouse.get_pos())
-        difference = mouse - pygame.Vector2(tile.unmoved_center)
-
-        if abs(difference.x) > abs(difference.y):
-            clamped_x = max(tile.unmoved_center[0] - 30, min(tile.unmoved_center[0] + 30, mouse.x))
-            tile.rect.centerx = clamped_x
-            tile.rect.centery = tile.unmoved_center[1]
-        else:
-            clamped_y = max(tile.unmoved_center[1] - 30, min(tile.unmoved_center[1] + 30, mouse.y))
-            tile.rect.centery = clamped_y
-            tile.rect.centerx = tile.unmoved_center[0]
-
+    board.update()
     board.draw(screen)
 
     pygame.display.update()
